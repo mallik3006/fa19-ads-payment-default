@@ -1,0 +1,518 @@
+---
+title: "Applied Data Science Project - Credit Default"
+author: "Mallik Challa"
+date: "December 15, 2019"
+output:
+  pdf_document: default
+  html_document: default
+mainfont: Calibri Light
+fontsize: 12pt
+urlcolor: blue
+toc: true
+toccolor: 'black'
+toc_depth: 1
+theme: united 
+link-citations: true
+csl: apa.CSL
+references:
+- id: yehlien2009a
+  title: The comparisons of data mining techniques for the predictive accuracy of probability of default of credit card clients
+  author:
+  - family: Yeh
+    given: I. C
+  - family: Lien
+    given: C. H
+  URL: 'http://archive.ics.uci.edu/ml/datasets/default+of+credit+card+clients'
+  type: webpage
+  issued:
+    year: 2009
+- id: horton2016a
+  title: Calculating AUC the area under a ROC Curve
+  author:
+  - family: Horton
+    given: Bob
+  URL: 'https://www.r-bloggers.com/calculating-auc-the-area-under-a-roc-curve/'
+  type: webpage
+  issued:
+    year: 2016
+- id: torgo2010a
+  title: SMOTE
+  author:
+  - family: Torgo
+    given: Luis
+  URL: 'https://www.rdocumentation.org/packages/DMwR/versions/0.4.1/topics/SMOTE'
+  type: webpage
+  issued:
+    year: 2010
+- id: emarald2012a
+  title: Variable Importance
+  author:
+  - family: Emerald
+    given: 
+  URL: 'https://r-forge.r-project.org/scm/viewvc.php/*checkout*/www/varimp.html?revision=894&root=caret'
+  type: webpage
+  issued:
+    year: 2012
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+\newpage
+
+```{r libraries, echo=FALSE, warning=FALSE, message=FALSE}
+#Import all libraries
+library(tidyverse)
+library(corrplot)
+library(psych)
+library(Hmisc)
+library(car)
+library(readxl)             # Importing and reading Excel spreadsheet
+library(ggplot2)            # Plotting
+library(grid)               # Plot Grid formatting
+library(gridExtra)          # Plot Grid formatting
+library(GGally)             # Extension to ggplot2
+library(naniar)             # Missing Data Analysis
+library(caret)              # Logistic Regression - glm; Variable Importance - varImp
+library(e1071)              # Confusion matrix  (Caret dependency)
+library(factoextra)         # Factor Analysis
+library("dataPreparation")  # Scaling and data preparation - Fit and Transform
+library(DMwR)               # SMOTE
+library(pROC)               # AUC score
+library(printr)             # PDF Knit companion
+```
+
+# Introduction {#introduction}
+
+The objective of this project is to gain valuable insights about customers credit repayment ability using the  "default of credit card clients Data Set" available on UCI machine learning repository via exploratory data analysis, dimension reduction techniques and Logistic regression modeling.
+
+Primarily, the project aims to answer the following questions:
+
+1. How accurately do the input features help in predicting customers repayment abilities?
+
+2. Which features are the key to predict the customers repayment capability?
+
+
+# Data Description {#datadesc}
+
+```{r import_data, echo=FALSE, warning=FALSE, message=FALSE}
+# Read the dataset from Excel spreadsheet
+card_df <- read_excel("default of credit card clients.xls", skip = 1)
+#head(card_df, 5)
+```
+
+The dataset is publicly available on UCI Machine Learning Repository [@yehlien2009a]. The data was collected by the authors from Taiwan to research the case of customers defaulting payment and compare the predictive accuracy of probability of default among six data mining methods. The dataset contains `r dim(card_df)[1]` observations and `r dim(card_df)[2]` features. Preliminary checks made on the data show that there is no missing data in any of the rows or columns.  
+
+The target variable is 'default.payment.next.month' which indicates whether the customer defaulted a payment following the 6-month period (values: 1=yes, 0=no).  
+
+```{r missing_data, echo=FALSE, warning=FALSE, message=FALSE}
+#any_na(card_df)
+```
+
+Following is the brief description of the input features in the dataset:
+
+**ID:** ID of each client.  
+**LIMIT_BAL:** Amount of given credit in NT dollars (includes individual and family/supplementary credit).  
+**SEX:** Gender (1=male, 2=female).  
+**EDUCATION:** (1=graduate school, 2=university, 3=high school, 4=others, 5=unknown, 6=unknown).  
+**MARRIAGE:** Marital status (1=married, 2=single, 3=others).  
+**AGE:** Age in years.  
+**PAY_0 thru PAY_6:** Payment History - Repayment status in September, 2005 thru April, 2005 (-2: No consumption; -1: Paid in full; 0: The use of revolving credit; 1=payment delay for one month, 2=payment delay for two months and so on until 8=payment delay for eight months, 9=payment delay for nine months and above).  
+**BILL_AMT1 thru BILL_AMT6:** Billed amount from statements in September, 2005  thru statement in April, 2005 (NT dollar).  
+**PAY_AMT1 thru PAY_AMT6:** Amount of previous payment in September, 2005 thru previous payment in April, 2005 (NT dollar).  
+
+***Note:*** The dependent variable 'default.payment.next.month' will be renamed as 'Target' and will be referred to as 'Target' hereafter in the paper.
+
+```{r data_desc3, echo=FALSE, warning=FALSE, message=FALSE}
+#Features in the data: 
+#names(card_df)
+# changing last column name to "Target"
+names(card_df)[25] <- "Target"
+```
+
+
+# Exploratory Data Analysis {#EDA}
+
+```{r data_desc2, echo=FALSE, warning=FALSE, message=FALSE}
+# Type of data:
+#str(card_df)
+```
+
+```{r stats_inp, echo=FALSE, warning=FALSE, message=FALSE}
+#Statistics for Input Features
+#summary(card_df)
+```
+
+#### Target variable counts by class (Repayment ability for next month):
+
+First, target variable counts are examined to get some insights related to the distribution of the population with respect to the dependent variable.
+
+```{r target_data, echo=FALSE, warning=FALSE, message=FALSE}
+barplot.default(table(card_df$Target), xlab = "Target Class",  ylab = "Count", col = c("salmon1", "turquoise3"),  mar=c(1,0,0,0))
+title(sub= "Figure 1: Counts by Target class", font.sub=2)
+```
+
+It is evident from the bar plot in Figure 1 that the target class is not evenly distributed. Only 22% of the sample population belong to the class of population that defaulted (i.e. class=1) on the next payment which is more than three times the other class. The imbalance in data is an important point to note since any prediction made using the given data could be more influenced by the majority class. 
+
+\newpage
+
+#### Visualizing Input Features
+
+Next step is to examine the input features present in the dataset. 
+
+```{r cred_limit, echo=FALSE, warning=FALSE, message=FALSE}
+# Boxplot for credit limit
+boxcrlim <- ggplot(card_df, aes(x = factor(Target), y = LIMIT_BAL)) + 
+            geom_boxplot() + 
+            labs(y="Credit Limit (NT Dollars)", x="Target Class")
+# Set the Theme for Legend (Holtz, 2018)
+legend_th <- theme(legend.position = c(.95, .95),legend.justification = c("right", "top"),legend.box.just ="right")
+#Density plot for Limit_Bal
+dencrlim <- ggplot(card_df, aes(x=LIMIT_BAL, fill=factor(Target))) + 
+            geom_density(alpha=.8) + 
+            xlab("Credit Limit (NT Dollars)") + 
+            guides(fill=guide_legend("Target")) + 
+            legend_th
+# Plot in grid (R Core Team, 2018 & Byrnes, 2011)
+grid.arrange(boxcrlim, dencrlim, nrow=1, ncol=2, bottom = textGrob("Figure 2: Credit Limit - BoxPlot and Density Plot",gp=gpar(fontsize=12,font=2)))
+```
+
+From the Boxplot for credit limit (`r names(card_df)[2]`) in Figure 2, it can be noted that majority of the population has a credit limit below 250,000. The density plot also shows the peak of the distribution in both classes is below 100,000. However, the boxplot also indicates a few outliers with credit limit over 500,000 in class=0 and over 350,000 in class=1.  
+
+```{r outliers, echo=FALSE, warning=FALSE, message=FALSE}
+# Outliers count and removing rows with the outliers
+lboutlier <- boxplot.stats(card_df$LIMIT_BAL)$out
+idxout <- which(card_df$LIMIT_BAL %in% lboutlier)
+card_df <- card_df[-(idxout),]
+```
+
+Further analysis with respect to credit limit indicates that the total number of outliers is `r length(lboutlier)`, which is not a very high percentage compared to the total population. In order to minimize any bias due to these outliers, it would be prudent to drop the observations containing these outliers considering the smaller number.
+
+\newpage
+
+Next set of features in the dataset include demographic variables - 'AGE', 'SEX', 'EDUCATION' and 'MARRIAGE'. Following Figure-3 shows the distribution plots for each of the demographic variables by the target class.
+
+```{r hist_age, echo=FALSE, warning=FALSE, message=FALSE}
+#value_counts of AGE
+#sort(table(card_df$AGE), decreasing = TRUE)
+
+# Setting theme for Histograms
+legend_th1 <- theme(legend.position = c(.95, .95),legend.justification = c("right", "top"),legend.box.just ="right", legend.key.width = unit(0.2, "cm"), legend.key.size = unit(0.2, "cm"))
+legend_th2 <- theme(legend.position = c(.6, .95),legend.justification = c("right", "top"),legend.box.just ="right", legend.key.width = unit(0.2, "cm"), legend.key.size = unit(0.2, "cm"))
+
+ageplot <- ggplot(card_df, aes(x=AGE, fill=Target)) + 
+           geom_histogram(aes(fill=factor(Target))) + 
+           legend_th1
+sexplot <- ggplot(card_df, aes(x=SEX, fill=Target)) + 
+           geom_histogram(aes(fill=factor(Target))) + 
+           legend_th2
+eduplot <- ggplot(card_df, aes(x=EDUCATION, fill=Target)) + 
+           geom_histogram(aes(fill=factor(Target))) + 
+           legend_th1
+marplot <- ggplot(card_df, aes(x=MARRIAGE, fill=Target)) + 
+           geom_histogram(aes(fill=factor(Target))) + 
+           legend_th1
+grid.arrange(ageplot, sexplot, eduplot, marplot, nrow=2, ncol=2, bottom = textGrob("Figure 3: Distribution of Demographic variables by Target", gp=gpar(fontsize=12,font=2)))
+```
+
+  
+'AGE' distribution (top left in Figure 3) is close to normal though with a slightly longer tail on the right (Which is expected since there cannot be customers below age 20) and the distribution peaks in between 20 and 40 years. It can also be noted that the Target class distribution is similar across all ages though the credit defaulting class appear more in between 25 to 35 years of age. Other demographic variables also show a similar pattern where in the distribution across different values appears even with respect to the target class.
+
+\newpage
+
+There are three different categories of quantitative variables in the input each giving information for the 6-month period from April, 2005 thru September, 2005. Among these variables,  payment history variables (PAY_0 thru PAy_6) could be the most important features to predict the repayment ability of the customer. Figure 4 shows the distribution for each of the 6 payment history variables by the target class.
+
+```{r pay_hist, echo=FALSE, warning=FALSE, message=FALSE}
+# Setting theme for Histograms
+legend_th2 <- theme(legend.position = c(.9, .95),legend.justification = c("right", "top"),legend.box.just ="right", legend.key.width = unit(0.1, "cm"), legend.key.size = unit(0.1, "cm"))
+#PAY-0
+PAY1plot <- ggplot(card_df, aes(x=PAY_0, fill=Target)) + 
+            geom_histogram(aes(fill=factor(Target))) + 
+            legend_th2
+#PAY-2
+PAY2plot <- ggplot(card_df, aes(x=PAY_2, fill=Target)) + 
+            geom_histogram(aes(fill=factor(Target))) + 
+            legend_th2
+#PAY-3
+PAY3plot <- ggplot(card_df, aes(x=PAY_3, fill=Target)) + 
+            geom_histogram(aes(fill=factor(Target))) + 
+            legend_th2
+#PAY-4
+PAY4plot <- ggplot(card_df, aes(x=PAY_4, fill=Target)) + 
+            geom_histogram(aes(fill=factor(Target))) + 
+            legend_th2
+#PAY-5
+PAY5plot <- ggplot(card_df, aes(x=PAY_5, fill=Target)) + 
+            geom_histogram(aes(fill=factor(Target))) + 
+            legend_th2
+#PAY-6
+PAY6plot <- ggplot(card_df, aes(x=PAY_6, fill=Target)) + 
+            geom_histogram(aes(fill=factor(Target))) + 
+            legend_th2
+grid.arrange(PAY1plot, PAY2plot,PAY3plot, PAY4plot, PAY5plot, PAY6plot, nrow=3, ncol=2, bottom = textGrob("Figure 4: Distribution of Payment History by Target", gp=gpar(fontsize=12,font=2)))
+```
+
+The distributions of the 6 payment history variables (PAY_0 being for the most recent month) indicate that the proportion of defaulted payments i.e. Class = 1, is higher among the customers with a poor payment history i.e. those with history values greater than 0 in the histograms on the right.
+
+\newpage
+
+In the final step of data exploration, correlation of input features can be examined to see if dimension reduction can be explored in the next step.
+
+```{r corr_plot1, echo=FALSE, warning=FALSE, message=FALSE}
+#Correlation matrix between input features
+corr_r <- rcorr(as.matrix(card_df[,2:24]), type="pearson")
+
+#correlation plot
+par(xpd=TRUE)
+corrplot(corr_r$r, type="upper", order="hclust", p.mat = corr_r$P, sig.level = 0.01, insig = "blank",                         tl.srt = 90, mar=c(1,0,0,0))
+title(sub= "Figure 5: Correlation Plot for Input Features", font.sub=2)
+```
+
+Following are the observations from the correlation plot in Figure 5:
+
+* Billed amount variables do have a strong correlation among each other which is expected since they are reflecting the cumulative amounts.
+* Payment history variables also show a strong positive correlation among themselves indicating that payment history does have a pattern.
+* Credit limit (`r names(card_df)[2]`) shows some positive correlation with the billed and paid amounts while it shows some negative correlation with the payment history variables.
+* Age and marital status (MARRIAGE) show some positive correlation which is quite intuitive.
+
+
+# Factor Analysis (EFA) {#FA}
+
+Based on the observations from correlation plot, it can be evaluated if the data is a good fit for exploratory factor analysis and thereby reduce the number of dimensions. 
+
+#### KMO Test for Factor Analysis
+
+``` {r KMO, echo=FALSE, warning=FALSE, message=FALSE}
+data_fa <- card_df[,2:24]
+datamatrix <- cor(data_fa)
+kmo <- KMO(r=datamatrix)
+```
+
+KMO test evaluation  gives an **overall MSA of `r round(kmo$MSA, digits = 3)`** which implies that factor analysis is appropriate for the given data. MSA values for most of the input variables is greater than 0.5 except for those shown in Table 1. The features with MSA much below 0.5 (like PAY_AMT2 and PAY_AMT5) could be omitted while retaining the rest of them to avoid elimination of all the payment amount variables.
+
+```{r MSA, echo=FALSE, warning=FALSE, message=FALSE}
+# MSA values in a Table (Xie, 2017)
+knitr::kable(kmo$MSAi[kmo$MSAi < 0.5], digits = 2, col.names = c("MSA"), caption = "**Features with MSA values < 0.5**")
+```
+
+#### Scree Plot
+
+A Scree plot can be used to determine number of factors.
+
+```{r ScreePlot, echo=FALSE, warning=FALSE, message=FALSE}
+# drop columns PAY_AMT2 and PAY_AMT5
+data_fa <- data_fa[, !names(data_fa) %in% c("PAY_AMT2", "PAY_AMT5")]
+ev <- eigen(cor(data_fa))
+Factor <- 1:length(ev$values)
+plot(Factor, ev$values, xlab = "Factor", ylab="Eigen Values")
+title(sub= "Figure 6: Scree Plot", font.sub=2, oma=c(0,0,3,0))
+```
+
+From the Scree plot in Figure 6, we can see that the number of factors that can be considered is either 3 or 4. Choosing the factors as 3, will result in elimination of all the demographic variables. One can argue based on intuition that the demographic variables could have an influence on the customers repayment capabilities for which reason we may choose factors as **4** for subsequent analysis. 
+
+#### Factor Analysis with 4 Factors
+
+Factor analysis with 4 factors will be done to get the factor scores which can be used in modeling later.
+
+``` {r Factor, echo=FALSE, warning=FALSE, message=FALSE}
+nfactors <- 4
+fit1 <-factanal(data_fa,nfactors,scores = c("regression"),rotation = "varimax")
+#print(fit1)
+fa_var <- fa(r = data_fa, nfactors = 4, rotate = "varimax", fm = "pa")
+fa.diagram(fa_var)
+title(sub= "Figure 7: Factors from Factor analysis", font.sub=2)
+```
+
+Factor Analysis diagram in Figure 7, shows that following are the 4 factors and their corresponding variables:
+
+* **Factor-1:** All billed amounts for preceding 6 months.  
+* **Factor-2:** Payment History values for preceding 6 months.  
+* **Factor-3:** Credit limit and all paid amounts for preceding 6 months.  
+* **Factor-4:** Age and Marriage status.
+
+# Logistic Regression
+
+Given that the target data is binary, and the objective is to predict the classes of the target variable, logistic regression can be considered as an appropriate modeling algorithm. 
+
+## Logistic Regression with the Factors from EFA {#LoR}
+
+To perform logistic regression analysis using the factors obtained from factor analysis, first step is to combine the target variable with factor scores and name the factors appropriately. Table 2 shows sample records after creating the combined dataset.
+
+```{r name_data, echo=FALSE, warning=FALSE, message=FALSE}
+logitdata <- cbind(card_df[25], fa_var$scores)
+names(logitdata) <- c("Target", "Bill_Amt", "Pay_Hist", "Pmt_Amt", "Demographic")
+knitr::kable(logitdata[1:3, ], caption = "**Predictor and Labeled Factors samples**")
+```
+
+Next, the dataset is split into training set (70%) and test set (30%). Training data will be used to fit the logistic regression model and the model will be used to predict the target classes on test data.  
+
+Table 3 shows the coefficients determined by the logit model for the 4 factors. It can be noted that 3 of the 4 Factors are statistically significant while the factor including BILL_AMT variables is comparatively insignificant since the p-value is greater than 0.05. 
+
+```{r split_data, echo=FALSE, warning=FALSE, message=FALSE}
+set.seed(100)
+indices= sample(1:nrow(logitdata), 0.7*nrow(logitdata))
+train=logitdata[indices,]
+test = logitdata[-indices,]
+# Fit Logistic regression model on train data
+LogModelFA <- glm(Target ~., data=train, family=binomial(link='logit'))
+# Predict on test data
+LoGModelFAPred <- round(predict(LogModelFA, newdata = test, type="response"))
+#summary(LogModelFA)
+knitr::kable(coef(summary(LogModelFA))[,1:4], caption = "**Logit Model Coefficents for Factors**")
+```
+
+The deviance values (residual - `r round(LogModelFA$deviance, digits = 2)` and null - `r round(LogModelFA$null.deviance, digits = 2)`) with a difference  of `r with(LogModelFA, df.null - df.residual)` degrees of freedom also suggests that the model as a whole fits *significantly better than an empty model*. 
+
+
+**Model performance (with factors)**
+
+```{r actual_val, echo=FALSE, warning=FALSE, message=FALSE}
+#table(test$Target)
+```
+
+Confusion matrix can be used for deriving the accuracy which is most straightforward and intuitive metric for  measuring the performance of the model. Table 4 is the confusion matrix for the logit model using the factors which indicates an **overall accuracy of around 80%**. However, it may be noted that the prediction accuracy for minority class i.e. class 1, is **less than 15%**. This can be explained due to the imbalance in the target classes in the input dataset.
+
+```{r conf_mat1, echo=FALSE, warning=FALSE, message=FALSE}
+cf1 <- confusionMatrix(table(test$Target, LoGModelFAPred))
+knitr::kable(as.matrix(cf1), caption = "**Confusion Matrix (using Factors)**")
+```
+
+In case of imbalanced datasets, **AUC score** (Area under the ROC curve) is a better performance metric since ROC curves are insensitive to class imbalance [@horton2016a]. Hence we can look at the AUC score as an evaluation metric for the model performance.
+
+```{r auc_scorefa, echo=FALSE, warning=FALSE, message=FALSE}
+roc_obj <- roc(test$Target, LoGModelFAPred)
+```
+
+The logit model with factors gives an **AUC score of `r round(roc_obj$auc, digits = 3)`** which is much lower despite the an accuracy of close to 80%. 
+
+
+## Logistic Regression with all the input features
+
+Furthermore, logistic regression analysis can be done using all the input features and then compared with the results obtained from the previous model using factors. Before fitting the logistic model, all the independent variables need to be standardized  i.e. center the values around 0 with a standard deviation of 1.  
+
+Table 5 shows the coefficients determined by the logit model for the input features. The table also gives the z-statistic which can be used to determine the most important features. As can be seen, the most recent payment history  (PAY_0) feature has a significant role to play based on the z-statistic.
+
+```{r logit_full, echo=FALSE, warning=FALSE, message=FALSE}
+# Split Dataset into Train:Test :: 70:30
+logitdatafull <- card_df[, 2:25]
+indices= sample(1:nrow(logitdatafull), 0.7*nrow(logitdatafull))
+X_train = logitdatafull[indices,]
+X_test = logitdatafull[-indices,]
+
+# Scaling All dependent variables - fit training data and transform test data (Toulemonde, 2019)
+scales <- build_scales(dataSet = X_train, cols = c(names(X_train)[1:23]), verbose = FALSE)
+X_train <- fastScale(dataSet = X_train, scales = scales, verbose = FALSE)
+X_test <- fastScale(dataSet = X_test, scales = scales, verbose = FALSE)
+# Inspect X_train after scaling
+#X_train[, c(1), with=FALSE]
+
+# Run logistic Regression Model on training data
+LogModelfull <- glm(Target ~., data=X_train, family=binomial(link='logit'))
+# Predict on test data
+LoGModelPredfull <- round(predict(LogModelfull, newdata = X_test, type="response"))
+knitr::kable(coef(summary(LogModelfull))[,1:4], caption = "**Logit Model Coefficients**")
+#summary(LogModelfull)
+# ROC 
+roc_obj <- roc(X_test$Target, LoGModelPredfull)
+```
+
+**Model performance (with all features)**
+
+Confusion matrix based on the predictions from the logistic regression on the test data using all input features  in Table 6 shows a marginally increased accuracy compared to the previous model. Similarly, the new model gives a slightly higher **AUC score of `r round(roc_obj$auc, digits = 3)`**. 
+
+```{r conf_mat2, echo=FALSE, warning=FALSE, message=FALSE}
+#Confusion matrix 
+cf2 <- confusionMatrix(table(X_test$Target, LoGModelPredfull))
+knitr::kable(as.matrix(cf2), caption = "**Confusion Matrix (using all features)**")
+```
+
+The increase in the metric scores is not very significant and to conclude if one model is significant than the other, additional comparision tests like t-tests over multiple runs may be required which is not in scope of this paper.
+
+## Logistic Regression using data generated by SMOTE
+
+As observed, both the previous models have performed poorly when it comes to predicting the minority class which can be attributed to the imbalance in dataset. In order to tackle this scenario, data with minority class can be synthetically generated to have a more balanced input. This can be done using SMOTE method (Synthetic Minority Over-Sampling Technique) [@torgo2010a]. SMOTE creates new (synthetic) observations using the nearest neighbors of these cases. In the next logit model, before fitting the actual data, additional data will be generated using SMOTE to create a training set with equal distribution of both the classes.  
+
+```{r log_smote, echo=FALSE, warning=FALSE, message=FALSE} 
+# SMOTE for Over-sampling of Minorty class
+X_train$Target = as.factor(X_train$Target)
+X_train_bal <- SMOTE(Target ~., X_train, perc.over = 200, k = 5)
+
+# Run logistic Regression Model on balanced training data
+LogModelSM <- glm(Target ~., data=X_train_bal, family=binomial(link='logit'))
+# Predict on test data
+LoGModelSMPred <- round(predict(LogModelSM, newdata = X_test, type="response"))
+# ROC for Logistic Regression with SMOTE
+roc_obj <- roc(X_test$Target, LoGModelSMPred)
+```
+
+  
+**Model performance (With SMOTE)**
+
+Table 7 shows the Confusion Matrix after running the logit model with data generated using SMOTE. The results show  a similar overall accuracy level but the prediction accuracy for the minority class has increased considerably which is around **50%**. The new model gives an **AUC score of `r round(roc_obj$auc, digits = 3)`** which is also clearly higher (about 15%) compared to previous model. This shows that if the input has a more balanced data, the model performs better on the new data.
+
+```{r roc_sm, echo=FALSE, warning=FALSE, message=FALSE}
+# Confusion matrix with SMOTE
+cf3 <- confusionMatrix(table(X_test$Target, LoGModelSMPred))
+knitr::kable(as.matrix(cf3), caption = "**Confusion Matrix (After using SMOTE)**")
+```
+
+## Variable Importance
+
+To determine the most important features which contribute towards the prediction, the absolute value of the t-statistic for each model parameter can be used in case of linear models like Logistic regression [@emarald2012a].
+
+Table 8 shows the top 10 features in the descending order of *score* which is the absolute z-statistic value obtained from the last logistic regression model. The table indicates the most recent payment (PAY_0) as the most important feature followed by prior month billing and payment variables. Demographic variables can be seen to exhibit almost similar importance level.
+
+```{r var_imp, echo=FALSE, warning=FALSE, message=FALSE}
+imp_fe <- as.data.frame(varImp(LogModelSM, scale=FALSE))
+imp_fe <- data.frame(Features = rownames(imp_fe), Score = imp_fe$Overall)
+imp_fe <- imp_fe[order(imp_fe$Score,decreasing = T),]
+
+knitr::kable(imp_fe[1:10,], digits = 3, caption = '**Variable Importance - Top 10**')
+```
+
+\newpage
+
+# Conclusion {#conclusion}
+
+**How accurately do the features help in predicting customers repayment abilities?**
+
+Logistic Regression model using Factors from Factor analysis and a model with all input features have yielded a prediction accuracy of about 80% though the accuracy for predicting the minority class is much lower at 15%. Also, the AUC score, which is a better metric when evaluating imbalanced data, is only around 0.6. After addressing the issue of data imbalance by generating synthetic data for minority class, the overall accuracy remained about the same while the prediction accuracy for minority class increased significantly to 50% and the AUC score also improved to 0.69. Furthermore, different classification algorithms and neural networks may also be evaluated to increase prediction accuracy and AUC score.  
+
+
+**Which features are the key to predict the customers repayment capability?**
+
+Logistic regression model results were used to examine the importance of features for predicting the repayment ability and it can be concluded that the most recent payment history (PAY_0) is the most important feature followed by other of payment, billing amount and demographic variables. Figure 8 shows the relative importance of all the input features. Additional modeling techniques like ensemble decision tree classifiers (Random Forest) can also be used to determine feature importance and compared for further research.
+
+```{r var_plot, echo=FALSE, warning=FALSE, message=FALSE}
+imp_fe <- as.data.frame(varImp(LogModelSM, scale=FALSE))
+varplot <- ggplot(imp_fe,aes(x= reorder(rownames(imp_fe),Overall),Overall)) +
+           geom_bar(stat ="identity", fill = "#1F77B4", alpha = 0.8) +
+           theme(plot.title = element_text(face = "bold",hjust = 0.5)) + 
+           xlab("Features") + 
+           coord_flip()
+grid.arrange(varplot, nrow=1, ncol=1, bottom = textGrob("Figure 8: Variable Importance Plot",  gp=gpar(fontsize=12,font=2)))
+```
+
+\newpage
+
+
+# References {#ref}
+
+
+**Code References**
+
+Byrnes, J. (2011). *Extra! Extra! Get Your gridExtra!*. Retrieved from <https://www.r-bloggers.com/extra-extra-get-your-gridextra/>
+ 
+Holtz, Yon. (2018). *Building a nice legend with R and ggplot2*. Retrieved from <https://www.r-graph-gallery.com/239-custom-layout-legend-ggplot2.html>
+
+R Core Team. (2018). *R: A language and environment for statistical computing*. Retrieved from <https://www.R-project.org/>
+
+Toulemonde, Emmanuel-Lin. (2019). *dataPreparation: Automated Data Preparation*. Retireved from <https://CRAN.R-project.org/package=dataPreparation>
+
+Xie, Yihui. (2017). *An Introduction to the printr Package*. Retrieved from <https://cran.r-project.org/web/packages/printr/vignettes/printr.html>  
+
+
+**Data and Technical References**
+
